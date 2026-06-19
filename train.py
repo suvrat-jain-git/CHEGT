@@ -473,7 +473,7 @@ def main(args) -> None:
     logger.info(model)
 
     # ── Loss / optimizer / scheduler ──────────────────────────────────
-    criterion = CombinedLoss(cfg.loss)
+    criterion = CombinedLoss(cfg.loss, embed_dim=cfg.head.embedding_dim, num_classes=train_ds.num_classes).to(device)
     optimizer = build_optimizer(model, cfg)
     scheduler = build_scheduler(optimizer, cfg, steps_per_epoch=len(train_loader))
     scaler    = GradScaler(enabled=cfg.training.mixed_precision)

@@ -1,4 +1,14 @@
-"""Evidence Extractor — orchestrates the three evidence nodes."""
+"""Evidence Extractor — orchestrates three evidence nodes.
+
+Evidence types:
+  Motion      — How the person moves (CLS token temporal dynamics)
+  Appearance  — What they look like  (CLS token temporal attention)
+  Morphology  — Body shape           (patch token spatial structure)  ← replaces Consistency
+
+All three receive different input signals:
+  Motion + Appearance: CLS tokens  (B, T, D_cls)
+  Morphology:          patch tokens (B, T, N_patches, D_patch)
+"""
 
 from typing import Tuple
 
@@ -8,74 +18,88 @@ from omegaconf import DictConfig
 
 from src.models.evidence.motion_node      import MotionNode
 from src.models.evidence.appearance_node  import AppearanceNode
-from src.models.evidence.consistency_node import ConsistencyNode
+from src.models.evidence.morphology_node  import MorphologyNode
 
 
 class EvidenceExtractor(nn.Module):
-    """Runs the three evidence nodes in parallel.
+    """Run three evidence nodes in parallel.
 
-    Returns a 3-tuple of evidence tensors:
-        (motion, appearance, consistency)   — each (B, evidence_dim)
-
-    The evidence_dim is taken from ``cfg.evidence.motion.output_dim``
-    and must be identical across all three nodes so they can be stacked
-    into a uniform node tensor for the graph transformer.
+    Returns (motion_feat, appearance_feat, morphology_feat)
+    each of shape (B, evidence_dim).
 
     Args:
-        cfg:       Full model config (uses ``cfg.evidence``).
-        input_dim: Temporal feature dim D (from TemporalTransformer).
+        cfg:            cfg.evidence section.
+        cls_input_dim:  CLS token dimensionality (temporal transformer output).
+        patch_dim:      Patch token dimensionality (DINOv2 patch tokens).
+        num_patches:    Number of patches per frame.
+        grid_h:         Patch grid height.
+        grid_w:         Patch grid width.
     """
 
-    def __init__(self, cfg: DictConfig, input_dim: int) -> None:
+    def __init__(
+        self,
+        cfg:           DictConfig,
+        cls_input_dim: int,
+        patch_dim:     int  = 768,
+        num_patches:   int  = 128,
+        grid_h:        int  = 16,
+        grid_w:        int  = 8,
+    ) -> None:
         super().__init__()
-        ev_cfg = cfg  # cfg is already cfg.evidence at call site
+        ev_cfg  = cfg
 
-        # All three nodes share the same output_dim
         out_dim = ev_cfg.motion.output_dim
         assert ev_cfg.appearance.output_dim  == out_dim, \
             "evidence.*.output_dim must match across all nodes."
-        assert ev_cfg.consistency.output_dim == out_dim, \
-            "evidence.*.output_dim must match across all nodes."
+        assert ev_cfg.morphology.output_dim  == out_dim, \
+            "evidence.morphology.output_dim must match other nodes."
 
-        # FIXED MAJOR-2: respect the enabled flag from config for clean ablations
         self.motion_node = MotionNode(
-            input_dim=input_dim,
+            input_dim=cls_input_dim,
             hidden_dim=ev_cfg.motion.hidden_dim,
             output_dim=out_dim,
         ) if ev_cfg.motion.get("enabled", True) else None
 
         self.appearance_node = AppearanceNode(
-            input_dim=input_dim,
+            input_dim=cls_input_dim,
             hidden_dim=ev_cfg.appearance.hidden_dim,
             output_dim=out_dim,
         ) if ev_cfg.appearance.get("enabled", True) else None
 
-        self.consistency_node = ConsistencyNode(
-            input_dim=input_dim,
-            hidden_dim=ev_cfg.consistency.hidden_dim,
+        self.morphology_node = MorphologyNode(
+            patch_dim=patch_dim,
+            num_patches=num_patches,
+            hidden_dim=ev_cfg.morphology.hidden_dim,
             output_dim=out_dim,
-        ) if ev_cfg.consistency.get("enabled", True) else None
+            grid_h=grid_h,
+            grid_w=grid_w,
+        ) if ev_cfg.morphology.get("enabled", True) else None
 
         self.output_dim = out_dim
         self._out_dim   = out_dim
 
     def forward(
-        self, x: torch.Tensor
+        self,
+        cls_tokens:    torch.Tensor,
+        patch_tokens:  torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Args:
-            x: (B, T, D) — output of TemporalTransformer.
+            cls_tokens:   (B, T, D_cls)      — temporal transformer output.
+            patch_tokens: (B, T, N, D_patch) — raw patch tokens per frame.
 
         Returns:
-            motion_feat     : (B, evidence_dim)
-            appearance_feat : (B, evidence_dim)
-            consistency_feat: (B, evidence_dim)
+            motion_feat:     (B, evidence_dim)
+            appearance_feat: (B, evidence_dim)
+            morphology_feat: (B, evidence_dim)
         """
-        B = x.size(0)
-        zeros = torch.zeros(B, self._out_dim, device=x.device, dtype=x.dtype)
+        B = cls_tokens.size(0)
+        zeros = torch.zeros(B, self._out_dim,
+                            device=cls_tokens.device,
+                            dtype=cls_tokens.dtype)
 
-        # FIXED MAJOR-2: disabled nodes return zero tensors (clean ablation)
-        motion_feat      = self.motion_node(x)      if self.motion_node      else zeros
-        appearance_feat  = self.appearance_node(x)  if self.appearance_node  else zeros
-        consistency_feat = self.consistency_node(x) if self.consistency_node else zeros
-        return motion_feat, appearance_feat, consistency_feat
+        motion_feat     = self.motion_node(cls_tokens)       if self.motion_node      else zeros
+        appearance_feat = self.appearance_node(cls_tokens)   if self.appearance_node  else zeros
+        morphology_feat = self.morphology_node(patch_tokens) if self.morphology_node  else zeros
+
+        return motion_feat, appearance_feat, morphology_feat

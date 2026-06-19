@@ -1,17 +1,12 @@
-"""DINOv2 Vision Transformer backbone.
+"""DINOv2 backbone — returns CLS token and patch tokens.
 
-Wraps Meta's DINOv2 models (loaded via torch.hub) and exposes a clean
-``forward()`` that returns the CLS token as a compact frame descriptor.
-
-Supported model names:
-    - ``dinov2_vits14``  (ViT-S/14, 384-d)
-    - ``dinov2_vitb14``  (ViT-B/14, 768-d)  ← default
-    - ``dinov2_vitl14``  (ViT-L/14, 1024-d)
-    - ``dinov2_vitg14``  (ViT-G/14, 1536-d)
+For 224×112 images with patch_size=14:
+  CLS token   : (N, 768)
+  Patch tokens: (N, 128, 768)  where 128 = 16×8 patch grid
 """
 
 import logging
-from typing import Optional
+from typing import Tuple
 
 import torch
 import torch.nn as nn
@@ -28,23 +23,17 @@ _DINOV2_OUTPUT_DIMS = {
 
 
 class DINOv2Backbone(nn.Module):
-    """DINOv2 backbone that returns CLS-token frame features.
+    """DINOv2 backbone returning both CLS and patch tokens.
 
     Args:
-        cfg: Backbone config with fields:
-            - ``name``         (str)  Model name, e.g. ``dinov2_vitb14``.
-            - ``pretrained``   (bool) Load pretrained weights from hub.
-            - ``freeze_layers``(int)  Freeze first N transformer blocks.
-                                      ``-1`` freezes everything except head.
-            - ``output_dim``   (int)  Expected output dimensionality (for assertion).
+        cfg: Backbone config — name, pretrained, freeze_layers, output_dim.
     """
 
     def __init__(self, cfg: DictConfig) -> None:
         super().__init__()
-        self.model_name: str = cfg.name
-        self.output_dim: int = cfg.output_dim
+        self.model_name = cfg.name
+        self.output_dim = cfg.output_dim
 
-        # ── Load from hub ─────────────────────────────────────────────
         logger.info(f"Loading DINOv2 backbone: {self.model_name}")
         self.vit = torch.hub.load(
             "facebookresearch/dinov2",
@@ -52,57 +41,42 @@ class DINOv2Backbone(nn.Module):
             pretrained=cfg.pretrained,
         )
 
-        # Verify output dim
         expected = _DINOV2_OUTPUT_DIMS.get(self.model_name)
         if expected and expected != cfg.output_dim:
             raise ValueError(
                 f"backbone.output_dim={cfg.output_dim} but {self.model_name} "
-                f"produces {expected}-d features. Fix configs/model.yaml."
+                f"produces {expected}-d features."
             )
 
-        # ── Freeze layers ─────────────────────────────────────────────
-        n_freeze: int = cfg.freeze_layers
+        # Freeze layers
+        n_freeze = cfg.freeze_layers
         if n_freeze == -1:
-            # Freeze everything
             for param in self.vit.parameters():
                 param.requires_grad_(False)
             logger.info("DINOv2: all layers frozen.")
         elif n_freeze > 0:
-            # Always freeze patch embed + positional embed
             for param in self.vit.patch_embed.parameters():
                 param.requires_grad_(False)
             self.vit.pos_embed.requires_grad_(False)
             self.vit.cls_token.requires_grad_(False)
-            # Freeze first n_freeze transformer blocks
             for i, block in enumerate(self.vit.blocks):
                 if i < n_freeze:
                     for param in block.parameters():
                         param.requires_grad_(False)
             n_total = len(self.vit.blocks)
-            logger.info(
-                f"DINOv2: frozen patch_embed + first {n_freeze}/{n_total} blocks."
-            )
-        else:
-            logger.info("DINOv2: all layers trainable.")
+            logger.info(f"DINOv2: frozen patch_embed + first {n_freeze}/{n_total} blocks.")
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Extract CLS-token features for a batch of frames.
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Extract CLS and patch tokens.
 
         Args:
-            x: (N, C, H, W) — can be B*T frames flattened.
+            x: (N, C, H, W) — flattened batch of frames.
 
         Returns:
-            features: (N, output_dim) CLS-token descriptors.
+            cls_tokens:   (N, output_dim)       — global frame descriptor.
+            patch_tokens: (N, num_patches, D)   — spatial patch descriptors.
         """
-        # DINOv2's forward_features returns a dict with 'x_norm_clstoken'
-        out = self.vit.forward_features(x)
-        return out["x_norm_clstoken"]  # (N, D)
-
-    def get_patch_features(self, x: torch.Tensor) -> torch.Tensor:
-        """Return spatial patch tokens (N, num_patches, D) for optional use."""
-        out = self.vit.forward_features(x)
-        return out["x_norm_patchtokens"]
-
-    def trainable_parameters(self):
-        """Yield only trainable parameters (convenience for optimizer)."""
-        return (p for p in self.parameters() if p.requires_grad)
+        out          = self.vit.forward_features(x)
+        cls_tokens   = out["x_norm_clstoken"]       # (N, D)
+        patch_tokens = out["x_norm_patchtokens"]     # (N, num_patches, D)
+        return cls_tokens, patch_tokens
