@@ -1,0 +1,55 @@
+# ──────────────────────────────────────────────
+# CHEGT  |  Training Configuration
+# ──────────────────────────────────────────────
+
+experiment:
+  name: chegt_base
+  seed: 42
+  output_dir: runs/
+  log_dir: runs/logs/
+  resume: null                 # path to checkpoint to resume from
+
+optimizer:
+  name: adamw
+  lr: 3.0e-4
+  weight_decay: 1.0e-4
+  backbone_lr_multiplier: 0.1  # lower LR for pretrained backbone
+  betas: [0.9, 0.999]
+  eps: 1.0e-8
+
+scheduler:
+  name: cosine_warmup
+  warmup_epochs: 10
+  min_lr: 1.0e-6
+
+training:
+  epochs: 120
+  num_workers: 8
+  gradient_clip: 1.0
+  mixed_precision: true        # torch.cuda.amp
+  num_iters_per_epoch: 200    # batches per epoch (PK sampling)
+
+sampler:
+  P: 16                        # identities per batch
+  K: 4                         # sequences per identity
+  # effective batch_size = P * K = 64
+
+loss:
+  triplet:
+    margin: 0.3
+    mining: hard               # hard | semi-hard | all
+    weight: 1.0
+  label_smoothing: 0.0         # set > 0 to add CE loss with smoothing
+
+evaluation:
+  interval: 5                  # evaluate every N epochs
+  ranks: [1, 5, 10, 20]
+  compute_eer: true
+
+checkpoint:
+  save_interval: 10
+  keep_last: 5
+
+visualization:
+  interval: 20                 # generate vis every N epochs
+  num_vis_samples: 512         # samples to use for t-SNE / UMAP

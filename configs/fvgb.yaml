@@ -1,0 +1,40 @@
+# ──────────────────────────────────────────────
+# CHEGT  |  FVGB Dataset Configuration
+# ──────────────────────────────────────────────
+# Reference: Fine-grained Video Gait Benchmark
+# Expected structure:
+#   datasets/fvgb/
+#     <identity_id>/
+#       <condition>/           e.g. normal, bag, coat
+#         <seq_id>/
+#           <frame>.jpg
+
+dataset:
+  name: fvgb
+  root: datasets/fvgb
+  num_classes: 1000            # update to actual split
+
+  train:
+    subjects: null
+    conditions: [normal, bag]
+    num_frames: 16
+    frame_stride: 1
+
+  gallery:
+    subjects: null
+    conditions: [normal]
+    seq_ids: [seq_01]
+
+  probe:
+    subjects: null
+    conditions: null           # null = all conditions
+    seq_ids: null
+
+  image_size: [256, 128]
+  color_jitter_brightness: 0.3
+  color_jitter_contrast: 0.3
+  color_jitter_saturation: 0.2
+  color_jitter_hue: 0.05
+
+experiment:
+  name: chegt_fvgb

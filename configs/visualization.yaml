@@ -1,0 +1,38 @@
+# ──────────────────────────────────────────────
+# CHEGT  |  Visualization Configuration
+# ──────────────────────────────────────────────
+
+visualization:
+  output_dir: runs/vis/
+  dpi: 150
+  figure_format: png           # png | pdf | svg
+
+  tsne:
+    perplexity: 30
+    n_iter: 1000
+    random_state: 42
+    num_classes_to_show: 20    # subsample classes for readability
+    point_size: 8
+    alpha: 0.8
+
+  umap:
+    n_neighbors: 15
+    min_dist: 0.1
+    n_components: 2
+    random_state: 42
+    num_classes_to_show: 20
+    point_size: 8
+    alpha: 0.8
+
+  attention:
+    node_labels: [Motion, Appearance, Consistency]
+    cmap: YlOrRd
+    annot: true
+
+  evidence_importance:
+    colors: ["#2196F3", "#4CAF50", "#FF9800"]  # Blue, Green, Orange
+    bar_width: 0.5
+
+  training_curves:
+    figsize: [12, 8]
+    smooth_factor: 0.6         # exponential moving average smoothing
