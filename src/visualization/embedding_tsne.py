@@ -63,7 +63,7 @@ def plot_tsne(
     tsne = TSNE(
         n_components=2,
         perplexity=perplexity,
-        n_iter=n_iter,
+        max_iter=n_iter,
         random_state=random_state,
         metric="euclidean",
     )
@@ -134,7 +134,7 @@ def plot_tsne_comparison(
             chosen = unique_classes
 
         mask  = np.isin(lbl, chosen)
-        tsne  = TSNE(n_components=2, perplexity=perplexity, n_iter=500,
+        tsne  = TSNE(n_components=2, perplexity=perplexity, max_iter=500,
                      random_state=42, metric="euclidean")
         coords = tsne.fit_transform(emb[mask])
         sub_lbl = lbl[mask]

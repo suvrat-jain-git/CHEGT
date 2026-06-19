@@ -1,35 +1,16 @@
-# ──────────────────────────────────────────────
-# CHEGT  |  CC-VID Dataset Configuration
-# ──────────────────────────────────────────────
-# Reference: CC-VID: Cross-Clothes Video Gait Dataset
-# Expected structure:
-#   datasets/ccvid/
-#     <identity_id>/          e.g. 001, 002, …, 153
-#       <seq_id>/             e.g. nm-01, cl-01, bg-01
-#         <frame>.jpg         e.g. 00001.jpg …
-
 dataset:
   name: ccvid
-  root: datasets/ccvid
-  num_classes: 153
+  root: /home/suvrat/data/ccvid
 
-  train:
-    subjects: null             # null = all; or list of ids to use
-    seq_types: [nm, cl]        # nm=normal, cl=clothes change, bg=bag
-    num_frames: 16
-    frame_stride: 1            # sample every Nth frame before subsampling
+  # Official split files — these define train/gallery/probe exactly
+  train_txt:   /home/suvrat/2BranchPipeline/dataset/train.txt
+  gallery_txt: /home/suvrat/2BranchPipeline/dataset/gallery.txt
+  query_txt:   /home/suvrat/2BranchPipeline/dataset/query.txt
 
-  gallery:
-    subjects: null
-    seq_types: [nm]
-    seq_ids: [nm-01, nm-02]
+  num_frames: 16
+  num_classes: 151   # test set size (gallery/query)
 
-  probe:
-    subjects: null
-    seq_types: [cl, nm]
-    seq_ids: null              # null = all except gallery
-
-  image_size: [256, 128]       # H x W (standard gait silhouette crop)
+  image_size: [224, 112]
   color_jitter_brightness: 0.3
   color_jitter_contrast: 0.3
   color_jitter_saturation: 0.2
